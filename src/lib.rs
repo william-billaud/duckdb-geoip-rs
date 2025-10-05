@@ -1,76 +1,122 @@
-
 extern crate duckdb;
 extern crate duckdb_loadable_macros;
 extern crate libduckdb_sys;
-
-mod geoip;
-use crate::geoip::GeoIPASNDatabase;
-
 use duckdb::{
-    core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
-    vtab::{BindInfo, InitInfo, TableFunctionInfo, VTab},
+    core::{DataChunkHandle, Inserter, LogicalTypeId},
+    vscalar::{ScalarFunctionSignature, VScalar},
+    vtab::arrow::WritableVector,
     Connection, Result,
 };
 use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
-use std::{
-    error::Error,
-    ffi::CString,
-    sync::atomic::{AtomicBool, Ordering},
-};
+use maxminddb::geoip2;
+use maxminddb::Mmap;
+use std::env;
+use std::error::Error;
+use std::path::Path;
+use std::sync::Arc;
 
-#[repr(C)]
-struct GeoIPBindData {
-    value: String,
+pub fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
+    unsafe {
+        let len = ffi::duckdb_string_t_length(*word);
+        let c_ptr = ffi::duckdb_string_t_data(word as *const _ as *mut _);
+        let bytes = std::slice::from_raw_parts(c_ptr as *const u8, len as usize);
+        String::from_utf8_lossy(bytes).into_owned()
+    }
 }
 
-#[repr(C)]
-struct GeoIPInitData {
-    done: AtomicBool,
-    asn_db : GeoIPASNDatabase
+
+//
+
+
+pub struct GeoipASNState {
+    reader: Arc<maxminddb::Reader<Mmap>>, // Use Arc so it can be shared across function calls safely
 }
 
-struct GeoIPASNHelloVTab;
-
-impl VTab for GeoIPASNHelloVTab {
-    type InitData = GeoIPInitData;
-    type BindData = GeoIPBindData;
-
-    fn bind(bind: &BindInfo) -> Result<Self::BindData, Box<dyn std::error::Error>> {
-        bind.add_result_column("column0", LogicalTypeHandle::from(LogicalTypeId::Varchar));
-        let value = bind.get_parameter(0).to_string();
-        Ok(GeoIPBindData { value })
+impl Default for GeoipASNState {
+    fn default() -> Self {
+        let dbpath_s =
+            env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
+        let dbpath = Path::new(&dbpath_s);
+        let reader = maxminddb::Reader::open_mmap(dbpath.join("GeoLite2-ASN.mmdb")).expect(
+            format!(
+                "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
+                dbpath.join("GeoLite2-ASN.mmdb").display()
+            )
+            .as_str(),
+        );
+        Self {
+            reader: Arc::new(reader),
+        }
     }
+}
 
-    fn init(_: &InitInfo) -> Result<Self::InitData, Box<dyn std::error::Error>> {
-        Ok(GeoIPInitData {
-            done: AtomicBool::new(false),
-            asn_db: GeoIPASNDatabase::new(),
-        })
-    }
 
-    fn func(func: &TableFunctionInfo<Self>, output: &mut DataChunkHandle) -> Result<(), Box<dyn std::error::Error>> {
-        let init_data = func.get_init_data();
-        let bind_data = func.get_bind_data();
-        if init_data.done.swap(true, Ordering::Relaxed) {
-            output.set_len(0);
-        } else {
-            let vector = output.flat_vector(0);
-            let result = CString::new(format!("Rusty Quack {} 🐥", bind_data.value))?;
-            vector.insert(0, result);
-            output.set_len(1);
+
+
+pub struct  GeoipAsnOrgScalar {}
+impl VScalar for GeoipAsnOrgScalar {
+    type State = GeoipASNState;
+
+    unsafe fn invoke(
+        state: &Self::State,
+        input: &mut DataChunkHandle,
+        output: &mut dyn WritableVector,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        let input_vector = input.flat_vector(0);
+        let sliced_input_vector: &[ffi::duckdb_string_t] = input_vector.as_slice();
+        let output_vector = output.flat_vector();
+
+        let count = input.len();
+        for i in 0..count {
+            if input_vector.row_is_null(i as u64) {
+                output_vector.insert(i, "");
+                continue;
+            }
+            let input_str = sliced_input_vector.get(i);
+            match { input_str } {
+                None => {
+                    output_vector.insert(i, "");
+                }
+                Some(s) => {
+                    output_vector.insert(
+                        i,
+                        Self::lookup_ip(&(state.reader), s)
+                            .unwrap_or_else(|| "".to_string())
+                            .as_str(),
+                    );
+                }
+            }
         }
         Ok(())
     }
 
-    fn parameters() -> Option<Vec<LogicalTypeHandle>> {
-        Some(vec![LogicalTypeHandle::from(LogicalTypeId::Varchar)])
+    fn signatures() -> Vec<ScalarFunctionSignature> {
+        vec![ScalarFunctionSignature::exact(
+            vec![LogicalTypeId::Varchar.into()],
+            LogicalTypeId::Varchar.into(),
+        )]
+    }
+}
+
+impl GeoipAsnOrgScalar {
+    unsafe fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
+        //let as_str = ip_as_ref.data.as_ref()?;
+        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
+        if let Ok(asn_record) = db.lookup::<geoip2::Asn>(as_ipaddr) {
+            return Some(
+                asn_record?
+                    .autonomous_system_organization
+                    .unwrap_or("")
+                    .to_string(),
+            );
+        };
+        return None;
     }
 }
 
 #[duckdb_entrypoint_c_api()]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
-    con.register_table_function::<GeoIPASNHelloVTab>("geoip_asn")
-        .expect("Failed to register hello table function");
+    let _ = con.register_scalar_function::<GeoipAsnOrgScalar>("geoip_asn_org");
     Ok(())
 }

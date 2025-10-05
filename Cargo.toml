@@ -1,5 +1,5 @@
 [package]
-name = "rusty_quack"
+name = "duckdb_geoip_rs"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,11 +15,13 @@ strip = true
 # src/wasm_lib.rs forwards to src/lib.rs so that we can change from cdylib
 # (that is needed while compiling natively) to staticlib (needed since the
 # actual linking will be done via emcc
-name = "rusty_quack"
+name = "duckdb_geoip_rs"
 path = "src/wasm_lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
 duckdb = { version = "1.4.0", features = ["vtab-loadable"] }
 duckdb-loadable-macros = "0.1.10"
+lazy_static = "1.5.0"
 libduckdb-sys = { version = "1.4.0", features = ["loadable-extension"] }
+maxminddb = { version = "0.26.0", features = ["mmap"] }

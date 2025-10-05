@@ -1,6 +1,10 @@
+
 extern crate duckdb;
 extern crate duckdb_loadable_macros;
 extern crate libduckdb_sys;
+
+mod geoip;
+use crate::geoip::GeoIPASNDatabase;
 
 use duckdb::{
     core::{DataChunkHandle, Inserter, LogicalTypeHandle, LogicalTypeId},
@@ -16,30 +20,32 @@ use std::{
 };
 
 #[repr(C)]
-struct HelloBindData {
-    name: String,
+struct GeoIPBindData {
+    value: String,
 }
 
 #[repr(C)]
-struct HelloInitData {
+struct GeoIPInitData {
     done: AtomicBool,
+    asn_db : GeoIPASNDatabase
 }
 
-struct HelloVTab;
+struct GeoIPASNHelloVTab;
 
-impl VTab for HelloVTab {
-    type InitData = HelloInitData;
-    type BindData = HelloBindData;
+impl VTab for GeoIPASNHelloVTab {
+    type InitData = GeoIPInitData;
+    type BindData = GeoIPBindData;
 
     fn bind(bind: &BindInfo) -> Result<Self::BindData, Box<dyn std::error::Error>> {
         bind.add_result_column("column0", LogicalTypeHandle::from(LogicalTypeId::Varchar));
-        let name = bind.get_parameter(0).to_string();
-        Ok(HelloBindData { name })
+        let value = bind.get_parameter(0).to_string();
+        Ok(GeoIPBindData { value })
     }
 
     fn init(_: &InitInfo) -> Result<Self::InitData, Box<dyn std::error::Error>> {
-        Ok(HelloInitData {
+        Ok(GeoIPInitData {
             done: AtomicBool::new(false),
+            asn_db: GeoIPASNDatabase::new(),
         })
     }
 
@@ -50,7 +56,7 @@ impl VTab for HelloVTab {
             output.set_len(0);
         } else {
             let vector = output.flat_vector(0);
-            let result = CString::new(format!("Rusty Quack {} 🐥", bind_data.name))?;
+            let result = CString::new(format!("Rusty Quack {} 🐥", bind_data.value))?;
             vector.insert(0, result);
             output.set_len(1);
         }
@@ -62,11 +68,9 @@ impl VTab for HelloVTab {
     }
 }
 
-const EXTENSION_NAME: &str = env!("CARGO_PKG_NAME");
-
 #[duckdb_entrypoint_c_api()]
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
-    con.register_table_function::<HelloVTab>(EXTENSION_NAME)
+    con.register_table_function::<GeoIPASNHelloVTab>("geoip_asn")
         .expect("Failed to register hello table function");
     Ok(())
 }

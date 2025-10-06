@@ -11,6 +11,7 @@ use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
 use maxminddb::geoip2;
 use maxminddb::Mmap;
+use once_cell::sync::OnceCell;
 use std::env;
 use std::error::Error;
 use std::path::Path;
@@ -25,56 +26,46 @@ fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
     }
 }
 
-//
-
-pub struct GeoipASNState {
-    // Initiated a loading time, so db will consume memory, but as we will only load extension when
-    // we want to use it, we don't really care
-    reader: maxminddb::Reader<Mmap>,
+enum MMDBDatabaseType {
+    City,
+    Asn,
 }
 
-impl Default for GeoipASNState {
-    fn default() -> Self {
+impl MMDBDatabaseType {
+    fn db_name(&self) -> &'static str {
+        match self {
+            MMDBDatabaseType::City => "GeoLite2-City.mmdb",
+            MMDBDatabaseType::Asn => "GeoLite2-ASN.mmdb",
+        }
+    }
+    fn get_db(&self) -> maxminddb::Reader<Mmap> {
         let dbpath_s =
             env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
         let dbpath = Path::new(&dbpath_s);
-        let reader = maxminddb::Reader::open_mmap(dbpath.join("GeoLite2-ASN.mmdb")).expect(
+        let reader = maxminddb::Reader::open_mmap(dbpath.join(self.db_name())).expect(
             format!(
                 "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
-                dbpath.join("GeoLite2-ASN.mmdb").display()
+                dbpath.join(self.db_name()).display()
             )
             .as_str(),
         );
-        Self { reader }
+        reader
     }
 }
 
-pub struct GeoipCityState {
-    reader: maxminddb::Reader<Mmap>, // Use Arc so it can be shared across function calls safely
-}
+static MMDB_ASN_CELL: OnceCell<maxminddb::Reader<Mmap>> = OnceCell::new();
+static MMDB_CITY_CELL: OnceCell<maxminddb::Reader<Mmap>> = OnceCell::new();
 
-impl Default for GeoipCityState {
-    fn default() -> Self {
-        let dbpath_s =
-            env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
-        let dbpath = Path::new(&dbpath_s);
-        let reader = maxminddb::Reader::open_mmap(dbpath.join("GeoLite2-City.mmdb")).expect(
-            format!(
-                "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
-                dbpath.join("GeoLite2-City.mmdb").display()
-            )
-            .as_str(),
-        );
-        Self { reader }
-    }
-}
-
-pub fn invoke_wrapper(
-    reader: &maxminddb::Reader<Mmap>,
+fn invoke_wrapper(
+    mmdb_type: MMDBDatabaseType,
     input: &mut DataChunkHandle,
     output: &mut dyn WritableVector,
     geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let reader = match mmdb_type {
+        MMDBDatabaseType::City => MMDB_CITY_CELL.get_or_init(|| mmdb_type.get_db()),
+        MMDBDatabaseType::Asn => MMDB_ASN_CELL.get_or_init(|| mmdb_type.get_db()),
+    };
     let input_vector = input.flat_vector(0);
     let sliced_input_vector: &[ffi::duckdb_string_t] = input_vector.as_slice();
     let output_vector = output.flat_vector();
@@ -105,14 +96,19 @@ pub fn invoke_wrapper(
 
 pub struct GeoipAsnOrgScalar {}
 impl VScalar for GeoipAsnOrgScalar {
-    type State = GeoipASNState;
+    type State = ();
 
     unsafe fn invoke(
-        state: &Self::State,
+        _state: &Self::State,
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(&state.reader, input, output, GeoipAsnOrgScalar::lookup_ip)
+        invoke_wrapper(
+            MMDBDatabaseType::Asn,
+            input,
+            output,
+            GeoipAsnOrgScalar::lookup_ip,
+        )
     }
 
     fn signatures() -> Vec<ScalarFunctionSignature> {
@@ -136,14 +132,19 @@ impl GeoipAsnOrgScalar {
 
 pub struct GeoipAsnNumScalar {}
 impl VScalar for GeoipAsnNumScalar {
-    type State = GeoipASNState;
+    type State = ();
 
     unsafe fn invoke(
-        state: &Self::State,
+        _state: &Self::State,
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(&state.reader, input, output, GeoipAsnNumScalar::lookup_ip)
+        invoke_wrapper(
+            MMDBDatabaseType::Asn,
+            input,
+            output,
+            GeoipAsnNumScalar::lookup_ip,
+        )
     }
 
     fn signatures() -> Vec<ScalarFunctionSignature> {
@@ -167,14 +168,19 @@ impl GeoipAsnNumScalar {
 
 pub struct GeoipCityScalar {}
 impl VScalar for GeoipCityScalar {
-    type State = GeoipCityState;
+    type State = ();
 
     unsafe fn invoke(
-        state: &Self::State,
+        _state: &Self::State,
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(&state.reader, input, output, GeoipCityScalar::lookup_ip)
+        invoke_wrapper(
+            MMDBDatabaseType::City,
+            input,
+            output,
+            GeoipCityScalar::lookup_ip,
+        )
     }
 
     fn signatures() -> Vec<ScalarFunctionSignature> {
@@ -204,15 +210,15 @@ impl GeoipCityScalar {
 
 pub struct GeoipCountryIsoScalar {}
 impl VScalar for GeoipCountryIsoScalar {
-    type State = GeoipCityState;
+    type State = ();
 
     unsafe fn invoke(
-        state: &Self::State,
+        _state: &Self::State,
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         invoke_wrapper(
-            &state.reader,
+            MMDBDatabaseType::City,
             input,
             output,
             GeoipCountryIsoScalar::lookup_ip,

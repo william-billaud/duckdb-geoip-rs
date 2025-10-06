@@ -482,6 +482,7 @@ dependencies = [
  "duckdb-loadable-macros",
  "libduckdb-sys",
  "maxminddb",
+ "once_cell",
 ]
 
 [[package]]

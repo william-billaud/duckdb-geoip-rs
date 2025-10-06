@@ -1,0 +1,9 @@
+todo : load file only once
+
+```
+❯ pmap -p 73926 | rg mmdb
+00007ff7fc800000  60600K r--s- /home/william/Documents/tools/duckdb-geoip-rs/temp/GeoLite2-City.mmdb
+00007ff800400000  60600K r--s- /home/william/Documents/tools/duckdb-geoip-rs/temp/GeoLite2-City.mmdb
+00007ff811200000  10604K r--s- /home/william/Documents/tools/duckdb-geoip-rs/temp/GeoLite2-ASN.mmdb
+00007ff811e00000  10604K r--s- /home/william/Documents/tools/duckdb-geoip-rs/temp/GeoLite2-ASN.mmdb
+```

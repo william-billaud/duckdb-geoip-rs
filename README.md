@@ -1,21 +1,62 @@
-# DuckDB Rust extension template
-This is an **experimental** template for Rust based extensions based on the C Extension API of DuckDB. The goal is to
-turn this eventually into a stable basis for pure-Rust DuckDB extensions that can be submitted to the Community extensions
-repository
+# DuckDB geoip extension
 
-Features:
-- No DuckDB build required
-- No C++ or C code required
-- CI/CD chain preconfigured
-- (Coming soon) Works with community extensions
+This extension export 4 function using MaxminDB database:
+* geoip_asn_org(ip : VARCHAR)-> VARCHAR
+* geoip_asn_num(ip : VARCHAR)-> VARCHAR
+* geoip_city(ip : VARCHAR)-> VARCHAR
+* geoip_country_iso(ip : VARCHAR) -> VARCHAR
+
+All the function will return an empty value on empty/non found value.
+
+## Usage
+
+Path to a directory containing `GeoLite2-City.mmdb` and `GeoLite2-ASN.mmdb` files must be exported to `MAXMIND_MMDB_DIR` environment variable. Defaulting to `/usr/share/GeoIP`. 
+```
+export MAXMIND_MMDB_DIR="`pwd`"
+```
+Then download extension from release.
+To run the extension code, start `duckdb` with `-unsigned` flag. This will allow you to load the local extension file.
+```bash
+duckdb -unsigned
+load '/path/to/extension/duckdb_geoip_rs.duckdb_extension';
+```
+
+And enjoy
+
+```sql
+CREATE TABLE ip_list (ip VARCHAR);
+INSERT INTO ip_list VALUES ('1.1.1.1'), ('8.8.8.8'), ('80.8.8.8'), ('90.9.250.1'), ('not_anip');
+SELECT ip, geoip_asn_org(ip),geoip_asn_num(ip),geoip_city(ip), geoip_country_iso(ip) from ip_list;
+````
+
+```text
+┌────────────┬───────────────────┬───────────────────┬────────────────┬───────────────────────┐
+│     ip     │ geoip_asn_org(ip) │ geoip_asn_num(ip) │ geoip_city(ip) │ geoip_country_iso(ip) │
+│  varchar   │      varchar      │      varchar      │    varchar     │        varchar        │
+├────────────┼───────────────────┼───────────────────┼────────────────┼───────────────────────┤
+│ 1.1.1.1    │ CLOUDFLARENET     │ 13335             │                │                       │
+│ 8.8.8.8    │ GOOGLE            │ 15169             │                │ US                    │
+│ 80.8.8.8   │ Orange            │ 3215              │                │ RE                    │
+│ 90.9.250.1 │ Orange            │ 3215              │ Lyon           │ FR                    │
+│ not_anip   │                   │                   │                │                       │
+└────────────┴───────────────────┴───────────────────┴────────────────┴───────────────────────┘
+```
 
 ## Cloning
 
 Clone the repo with submodules
 
 ```shell
-git clone --recurse-submodules <repo>
+git clone --recurse-submodules https://github.com/william-billaud/duckdb-geoip-rs.git
+cargo build --release
 ```
+
+Then loading extension
+```
+duckdb -unsigned
+load './build/release/duckdb_geoip_rs.duckdb_extension';
+```
+
 
 ## Dependencies
 In principle, these extensions can be compiled with the Rust toolchain alone. However, this template relies on some additional
@@ -48,29 +89,6 @@ a script is run to transform the shared library into a loadable extension by app
 to the `build/debug` directory.
 
 To create optimized release binaries, simply run `make release` instead.
-
-### Running the extension
-To run the extension code, start `duckdb` with `-unsigned` flag. This will allow you to load the local extension file.
-
-```sh
-duckdb -unsigned
-```
-
-After loading the extension by the file path, you can use the functions provided by the extension (in this case, `rusty_quack()`).
-
-```sql
-LOAD './build/debug/extension/rusty_quack/rusty_quack.duckdb_extension';
-SELECT * FROM rusty_quack('Jane');
-```
-
-```
-┌─────────────────────┐
-│       column0       │
-│       varchar       │
-├─────────────────────┤
-│ Rusty Quack Jane 🐥 │
-└─────────────────────┘
-```
 
 ## Testing
 This extension uses the DuckDB Python client for testing. This should be automatically installed in the `make configure` step.

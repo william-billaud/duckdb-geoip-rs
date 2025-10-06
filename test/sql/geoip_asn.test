@@ -1,0 +1,32 @@
+# name: test/sql/rusty_quack.test
+# description: test rusty_quack extension
+# group: [geoip-rs]
+
+# Before we load the extension, this will fail
+statement error
+SELECT rusty_quack('Sam');
+----
+Catalog Error: Scalar Function with name rusty_quack does not exist!
+
+# Require statement will ensure the extension is loaded from now on
+require duckdb_geoip_rs
+
+require icu
+
+# Confirm the extension works
+query TTTT
+SELECT geoip_asn_org('8.8.8.8'), geoip_asn_num('8.8.8.8'), geoip_country_iso('8.8.8.8'),geoip_city('8.8.8.8');
+----
+GOOGLE
+15169
+US
+(empty)
+
+# Confirm empty result on non ip query
+query TTTT
+SELECT geoip_asn_org('not_an_ip'),geoip_asn_num('not_an_ip'), geoip_city('not_an_ip'),geoip_country_iso('not_an_ip');
+----
+(empty)
+(empty)
+(empty)
+(empty)

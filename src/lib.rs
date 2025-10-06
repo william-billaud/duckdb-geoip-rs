@@ -14,8 +14,9 @@ use maxminddb::Mmap;
 use std::env;
 use std::error::Error;
 use std::path::Path;
-use std::sync::Arc;
-pub fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
+// from https://github.com/alamminsalo/duckdb-ml
+fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
+    // Convert a string from ffi to a Rust string
     unsafe {
         let len = ffi::duckdb_string_t_length(*word);
         let c_ptr = ffi::duckdb_string_t_data(word as *const _ as *mut _);
@@ -27,7 +28,9 @@ pub fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
 //
 
 pub struct GeoipASNState {
-    reader: Arc<maxminddb::Reader<Mmap>>, // Use Arc so it can be shared across function calls safely
+    // Initiated a loading time, so db will consume memory, but as we will only load extension when
+    // we want to use it, we don't really care
+    reader: maxminddb::Reader<Mmap>,
 }
 
 impl Default for GeoipASNState {
@@ -42,14 +45,32 @@ impl Default for GeoipASNState {
             )
             .as_str(),
         );
-        Self {
-            reader: Arc::new(reader),
-        }
+        Self { reader }
+    }
+}
+
+pub struct GeoipCityState {
+    reader: maxminddb::Reader<Mmap>, // Use Arc so it can be shared across function calls safely
+}
+
+impl Default for GeoipCityState {
+    fn default() -> Self {
+        let dbpath_s =
+            env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
+        let dbpath = Path::new(&dbpath_s);
+        let reader = maxminddb::Reader::open_mmap(dbpath.join("GeoLite2-City.mmdb")).expect(
+            format!(
+                "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
+                dbpath.join("GeoLite2-City.mmdb").display()
+            )
+            .as_str(),
+        );
+        Self { reader }
     }
 }
 
 pub fn invoke_wrapper(
-    reader: Arc<maxminddb::Reader<Mmap>>,
+    reader: &maxminddb::Reader<Mmap>,
     input: &mut DataChunkHandle,
     output: &mut dyn WritableVector,
     geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String>,
@@ -72,7 +93,7 @@ pub fn invoke_wrapper(
             Some(s) => {
                 output_vector.insert(
                     i,
-                    geoip_func(&(reader), s)
+                    geoip_func(reader, s)
                         .unwrap_or_else(|| "".to_string())
                         .as_str(),
                 );
@@ -91,12 +112,7 @@ impl VScalar for GeoipAsnOrgScalar {
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(
-            state.reader.clone(),
-            input,
-            output,
-            GeoipAsnOrgScalar::lookup_ip,
-        )
+        invoke_wrapper(&state.reader, input, output, GeoipAsnOrgScalar::lookup_ip)
     }
 
     fn signatures() -> Vec<ScalarFunctionSignature> {
@@ -111,15 +127,10 @@ impl GeoipAsnOrgScalar {
     fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        if let Ok(asn_record) = db.lookup::<geoip2::Asn>(as_ipaddr) {
-            return Some(
-                asn_record?
-                    .autonomous_system_organization
-                    .unwrap_or("")
-                    .to_string(),
-            );
-        };
-        return None;
+        db.lookup::<geoip2::Asn>(as_ipaddr)
+            .ok()
+            .and_then(|asn_record| asn_record?.autonomous_system_organization)
+            .and_then(|organization| Some(organization.to_string()))
     }
 }
 
@@ -132,12 +143,7 @@ impl VScalar for GeoipAsnNumScalar {
         input: &mut DataChunkHandle,
         output: &mut dyn WritableVector,
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(
-            state.reader.clone(),
-            input,
-            output,
-            GeoipAsnNumScalar::lookup_ip,
-        )
+        invoke_wrapper(&state.reader, input, output, GeoipAsnNumScalar::lookup_ip)
     }
 
     fn signatures() -> Vec<ScalarFunctionSignature> {
@@ -152,15 +158,83 @@ impl GeoipAsnNumScalar {
     fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        if let Ok(asn_record) = db.lookup::<geoip2::Asn>(as_ipaddr) {
-            return Some(
-                asn_record?
-                    .autonomous_system_number
-                    .unwrap_or(0)
-                    .to_string(),
-            );
-        };
-        return None;
+        db.lookup::<geoip2::Asn>(as_ipaddr)
+            .ok()
+            .and_then(|asn_record| asn_record?.autonomous_system_number)
+            .and_then(|number| Some(number.to_string()))
+    }
+}
+
+pub struct GeoipCityScalar {}
+impl VScalar for GeoipCityScalar {
+    type State = GeoipCityState;
+
+    unsafe fn invoke(
+        state: &Self::State,
+        input: &mut DataChunkHandle,
+        output: &mut dyn WritableVector,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        invoke_wrapper(&state.reader, input, output, GeoipCityScalar::lookup_ip)
+    }
+
+    fn signatures() -> Vec<ScalarFunctionSignature> {
+        vec![ScalarFunctionSignature::exact(
+            vec![LogicalTypeId::Varchar.into()],
+            LogicalTypeId::Varchar.into(),
+        )]
+    }
+}
+
+impl GeoipCityScalar {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
+        //let as_str = ip_as_ref.data.as_ref()?;
+        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
+        match db
+            .lookup::<geoip2::City>(as_ipaddr)
+            .ok()
+            .and_then(|city| city?.city)
+            .and_then(|c| c.names)
+        {
+            // only support english, maybe allows to pass language as param
+            Some(name) => name.get("en").and_then(|n| Some(n.to_string())),
+            None => None,
+        }
+    }
+}
+
+pub struct GeoipCountryIsoScalar {}
+impl VScalar for GeoipCountryIsoScalar {
+    type State = GeoipCityState;
+
+    unsafe fn invoke(
+        state: &Self::State,
+        input: &mut DataChunkHandle,
+        output: &mut dyn WritableVector,
+    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+        invoke_wrapper(
+            &state.reader,
+            input,
+            output,
+            GeoipCountryIsoScalar::lookup_ip,
+        )
+    }
+
+    fn signatures() -> Vec<ScalarFunctionSignature> {
+        vec![ScalarFunctionSignature::exact(
+            vec![LogicalTypeId::Varchar.into()],
+            LogicalTypeId::Varchar.into(),
+        )]
+    }
+}
+
+impl GeoipCountryIsoScalar {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
+        //let as_str = ip_as_ref.data.as_ref()?;
+        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
+        db.lookup::<geoip2::City>(as_ipaddr)
+            .ok()
+            .and_then(|city| city?.country?.iso_code)
+            .and_then(|iso_code| Some(iso_code.to_string()))
     }
 }
 
@@ -168,5 +242,7 @@ impl GeoipAsnNumScalar {
 pub unsafe fn extension_entrypoint(con: Connection) -> Result<(), Box<dyn Error>> {
     let _ = con.register_scalar_function::<GeoipAsnOrgScalar>("geoip_asn_org");
     let _ = con.register_scalar_function::<GeoipAsnNumScalar>("geoip_asn_num");
+    let _ = con.register_scalar_function::<GeoipCityScalar>("geoip_city");
+    let _ = con.register_scalar_function::<GeoipCountryIsoScalar>("geoip_country_iso");
     Ok(())
 }

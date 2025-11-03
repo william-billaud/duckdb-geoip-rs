@@ -19,6 +19,6 @@ jobs:
     with:
       duckdb_version: v1.4.1
       ci_tools_version: v1.4.1
-      extension_name: rusty_quack
+      extension_name: duckdb_geoip_rs
       extra_toolchains: rust;python3
       exclude_archs: 'wasm_mvp;wasm_eh;wasm_threads;linux_amd64_musl'

@@ -1,6 +1,6 @@
 [package]
 name = "duckdb_geoip_rs"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [lib]
@@ -20,8 +20,8 @@ path = "src/wasm_lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-duckdb = { version = "1.4.1", features = ["vtab-loadable", "vscalar"] }
-duckdb-loadable-macros = "0.1.11"
-libduckdb-sys = { version = "1.4.1", features = ["loadable-extension"] }
+duckdb = { version = "1.4.3", features = ["vtab-loadable", "vscalar"] }
+duckdb-loadable-macros = "0.1.13"
+libduckdb-sys = { version = "1.4.3", features = ["loadable-extension"] }
 maxminddb = { version = "0.26.0", features = ["mmap"] }
 once_cell = "1.21.3"

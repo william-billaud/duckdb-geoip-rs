@@ -10,6 +10,7 @@ USE_UNSTABLE_C_API=1
 
 # Target DuckDB version
 TARGET_DUCKDB_VERSION=v1.4.3
+export MAXMIND_MMDB_DIR = $(CURDIR)/test_db
 
 all: configure debug
 

@@ -13,13 +13,34 @@ require duckdb_geoip_rs
 
 require icu
 
-# Confirm the extension works
-query TTTT
-SELECT geoip_asn_org('8.8.8.8'), geoip_asn_num('8.8.8.8'), geoip_country_iso('8.8.8.8'),geoip_city('8.8.8.8');
+# Confirm the extension works (ASN)
+# Use maxmindb test db, fromm test_db directory
+query TT
+SELECT geoip_asn_org('83.206.12.5'), geoip_asn_num('83.206.12.5');
 ----
-GOOGLE
-15169
-US
+France Telecom - Orange
+3215
+
+# Confirm the extension works (City)
+query TT
+SELECT geoip_country_iso('2.125.160.217'),geoip_city('2.125.160.217');
+----
+GB
+Boxford
+
+
+# Confirm the extension works (ASN) /IPV6
+query TT
+SELECT geoip_asn_org('2a01:c000::fade'), geoip_asn_num('2a01:c000::fade');
+----
+Orange S.A.
+5511
+
+# Confirm the extension works (City/IPv6)
+query TT
+SELECT geoip_country_iso('2a02:da40::6'),geoip_city('2a02:da40::6');
+----
+GB
 (empty)
 
 # Confirm empty result on non ip query

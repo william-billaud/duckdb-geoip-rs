@@ -14,13 +14,13 @@ Path to a directory containing `GeoLite2-City.mmdb` and `GeoLite2-ASN.mmdb` file
 ```
 export MAXMIND_MMDB_DIR="`pwd`"
 ```
-Then download extension from release.
+Then download extension from the release tab.
 To run the extension code, start `duckdb` with `-unsigned` flag. This will allow you to load the local extension file.
 ```bash
 duckdb -unsigned
 load '/path/to/extension/duckdb_geoip_rs.duckdb_extension';
 ```
-
+This extension depends on the [inet](https://duckdb.org/docs/stable/core_extensions/inet) core extensions, which will be automatically installed, except if you do not have access to the internet.
 And enjoy
 
 ```sql

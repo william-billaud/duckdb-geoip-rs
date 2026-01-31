@@ -1,13 +1,10 @@
-extern crate duckdb;
-extern crate duckdb_loadable_macros;
-extern crate libduckdb_sys;
 use duckdb::{
     core::{DataChunkHandle, Inserter, LogicalTypeId},
+    duckdb_entrypoint_c_api,
     vscalar::{ScalarFunctionSignature, VScalar},
     vtab::arrow::WritableVector,
     Connection, Result,
 };
-use duckdb_loadable_macros::duckdb_entrypoint_c_api;
 use libduckdb_sys as ffi;
 use maxminddb::geoip2;
 use maxminddb::Mmap;

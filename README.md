@@ -20,8 +20,16 @@ To run the extension code, start `duckdb` with `-unsigned` flag. This will allow
 duckdb -unsigned
 load '/path/to/extension/duckdb_geoip_rs.duckdb_extension';
 ```
-This extension depends on the [inet](https://duckdb.org/docs/stable/core_extensions/inet) core extensions, which will be automatically installed, except if you do not have access to the internet.
-And enjoy
+
+Or install extension from community
+
+```bash
+ducdkdb
+INSTALL 'duckdb_geoip_rs' FROM community;
+LOAD 'duckdb_geoip_rs';
+```
+
+And then :
 
 ```sql
 CREATE TABLE ip_list (ip VARCHAR);
@@ -48,7 +56,7 @@ Clone the repo with submodules
 
 ```shell
 git clone --recurse-submodules https://github.com/william-billaud/duckdb-geoip-rs.git
-cargo build --release
+make
 ```
 
 Then loading extension

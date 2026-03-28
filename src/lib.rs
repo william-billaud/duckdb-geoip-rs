@@ -39,7 +39,7 @@ impl MMDBDatabaseType {
         let dbpath_s =
             env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
         let dbpath = Path::new(&dbpath_s);
-        let reader = maxminddb::Reader::open_mmap(dbpath.join(self.db_name())).expect(
+        let reader = unsafe { maxminddb::Reader::open_mmap(dbpath.join(self.db_name()))}.expect(
             format!(
                 "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
                 dbpath.join(self.db_name()).display()
@@ -124,9 +124,10 @@ impl GeoipAsnOrgScalar {
     fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        db.lookup::<geoip2::Asn>(as_ipaddr)
+        db.lookup(as_ipaddr)
             .ok()
-            .and_then(|asn_record| asn_record?.autonomous_system_organization)
+            .and_then(|result| result.decode::<geoip2::Asn>().ok())?
+            .and_then(|asn_record| asn_record.autonomous_system_organization)
             .and_then(|organization| Some(organization.to_string()))
     }
 }
@@ -164,9 +165,10 @@ impl GeoipAsnNumScalar {
     fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        db.lookup::<geoip2::Asn>(as_ipaddr)
+        db.lookup(as_ipaddr)
             .ok()
-            .and_then(|asn_record| asn_record?.autonomous_system_number)
+            .and_then(|result| result.decode::<geoip2::Asn>().ok())?
+            .and_then(|asn_record| asn_record.autonomous_system_number)
             .and_then(|number| Some(number.to_string()))
     }
 }
@@ -205,13 +207,12 @@ impl GeoipCityScalar {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
         match db
-            .lookup::<geoip2::City>(as_ipaddr)
+            .lookup(as_ipaddr)
             .ok()
-            .and_then(|city| city?.city)
-            .and_then(|c| c.names)
+            .and_then(|result| result.decode::<geoip2::City>().ok())?
         {
             // only support english, maybe allows to pass language as param
-            Some(name) => name.get("en").and_then(|n| Some(n.to_string())),
+            Some(city) => Some(city.city.names.english?.to_string()),
             None => None,
         }
     }
@@ -250,10 +251,15 @@ impl GeoipCountryIsoScalar {
     fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
         let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        db.lookup::<geoip2::City>(as_ipaddr)
+        match db
+            .lookup(as_ipaddr)
             .ok()
-            .and_then(|city| city?.country?.iso_code)
-            .and_then(|iso_code| Some(iso_code.to_string()))
+            .and_then(|result| result.decode::<geoip2::City>().ok())?
+        {
+            // only support english, maybe allows to pass language as param
+            Some(city) => Some(city.country.iso_code?.to_string()),
+            None => None,
+        }
     }
 }
 

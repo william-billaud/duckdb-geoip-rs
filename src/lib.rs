@@ -114,6 +114,10 @@ impl VScalar for GeoipAsnOrgScalar {
             LogicalTypeId::Varchar.into(),
         )]
     }
+
+    fn volatile() -> bool {
+        false
+    }
 }
 
 impl GeoipAsnOrgScalar {
@@ -150,6 +154,10 @@ impl VScalar for GeoipAsnNumScalar {
             LogicalTypeId::Varchar.into(),
         )]
     }
+
+    fn volatile() -> bool {
+        false
+    }
 }
 
 impl GeoipAsnNumScalar {
@@ -185,6 +193,10 @@ impl VScalar for GeoipCityScalar {
             vec![LogicalTypeId::Varchar.into()],
             LogicalTypeId::Varchar.into(),
         )]
+    }
+
+    fn volatile() -> bool {
+        false
     }
 }
 
@@ -227,6 +239,10 @@ impl VScalar for GeoipCountryIsoScalar {
             vec![LogicalTypeId::Varchar.into()],
             LogicalTypeId::Varchar.into(),
         )]
+    }
+
+    fn volatile() -> bool {
+        false
     }
 }
 

@@ -4,9 +4,9 @@
 
 # Before we load the extension, this will fail
 statement error
-SELECT rusty_quack('Sam');
+SELECT geoip_asn_org('Sam');
 ----
-Catalog Error: Scalar Function with name rusty_quack does not exist!
+Catalog Error: Scalar Function with name geoip_asn_org does not exist!
 
 # Require statement will ensure the extension is loaded from now on
 require duckdb_geoip_rs
@@ -51,3 +51,23 @@ SELECT geoip_asn_org('not_an_ip'),geoip_asn_num('not_an_ip'), geoip_city('not_an
 (empty)
 (empty)
 (empty)
+
+statement error
+SELECT geoip_asn_org(1);
+----
+Binder Error: No function matches the given name and argument types 'geoip_asn_org(INTEGER_LITERAL)'. You might need to add explicit type casts.
+
+statement error
+SELECT geoip_asn_num(1);
+----
+Binder Error: No function matches the given name and argument types 'geoip_asn_num(INTEGER_LITERAL)'. You might need to add explicit type casts.
+
+statement error
+SELECT geoip_city(1);
+----
+Binder Error: No function matches the given name and argument types 'geoip_city(INTEGER_LITERAL)'. You might need to add explicit type casts.
+
+statement error
+SELECT geoip_country_iso(1);
+----
+Binder Error: No function matches the given name and argument types 'geoip_country_iso(INTEGER_LITERAL)'. You might need to add explicit type casts.

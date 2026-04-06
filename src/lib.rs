@@ -1,6 +1,8 @@
+use duckdb::core::FlatVector;
 use duckdb::{
     core::{DataChunkHandle, Inserter, LogicalTypeId},
     duckdb_entrypoint_c_api,
+    types::DuckString,
     vscalar::{ScalarFunctionSignature, VScalar},
     vtab::arrow::WritableVector,
     Connection, Result,
@@ -12,16 +14,6 @@ use once_cell::sync::OnceCell;
 use std::env;
 use std::error::Error;
 use std::path::Path;
-// from https://github.com/alamminsalo/duckdb-ml
-fn duckdb_string_to_string(word: &ffi::duckdb_string_t) -> String {
-    // Convert a string from ffi to a Rust string
-    unsafe {
-        let len = ffi::duckdb_string_t_length(*word);
-        let c_ptr = ffi::duckdb_string_t_data(word as *const _ as *mut _);
-        let bytes = std::slice::from_raw_parts(c_ptr as *const u8, len as usize);
-        String::from_utf8_lossy(bytes).into_owned()
-    }
-}
 
 enum MMDBDatabaseType {
     City,
@@ -39,7 +31,7 @@ impl MMDBDatabaseType {
         let dbpath_s =
             env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
         let dbpath = Path::new(&dbpath_s);
-        let reader = unsafe { maxminddb::Reader::open_mmap(dbpath.join(self.db_name()))}.expect(
+        let reader = unsafe { maxminddb::Reader::open_mmap(dbpath.join(self.db_name())) }.expect(
             format!(
                 "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
                 dbpath.join(self.db_name()).display()
@@ -57,31 +49,28 @@ fn invoke_wrapper(
     mmdb_type: MMDBDatabaseType,
     input: &mut DataChunkHandle,
     output: &mut dyn WritableVector,
-    geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String>,
+    geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String>,
 ) -> std::result::Result<(), Box<dyn std::error::Error>> {
     let reader = match mmdb_type {
         MMDBDatabaseType::City => MMDB_CITY_CELL.get_or_init(|| mmdb_type.get_db()),
         MMDBDatabaseType::Asn => MMDB_ASN_CELL.get_or_init(|| mmdb_type.get_db()),
     };
-    let input_vector = input.flat_vector(0);
-    let sliced_input_vector: &[ffi::duckdb_string_t] = input_vector.as_slice();
-    let output_vector = output.flat_vector();
+    let mut input_vector = input.flat_vector(0);
+    let sliced_input_vector: &mut [ffi::duckdb_string_t] = input_vector.as_mut_slice();
+    let output_vector: FlatVector = output.flat_vector();
 
-    let count = input.len();
+    let count: usize = input.len();
     for i in 0..count {
-        if input_vector.row_is_null(i as u64) {
-            output_vector.insert(i, "");
-            continue;
-        }
-        let input_str = sliced_input_vector.get(i);
+        let input_str = sliced_input_vector.get_mut(i);
         match { input_str } {
             None => {
                 output_vector.insert(i, "");
             }
             Some(s) => {
+                let ip_addr: String = DuckString::new(s).as_str().to_string();
                 output_vector.insert(
                     i,
-                    geoip_func(reader, s)
+                    geoip_func(reader, ip_addr)
                         .unwrap_or_else(|| "".to_string())
                         .as_str(),
                 );
@@ -121,10 +110,9 @@ impl VScalar for GeoipAsnOrgScalar {
 }
 
 impl GeoipAsnOrgScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
-        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        db.lookup(as_ipaddr)
+        db.lookup(ip.parse().ok()?)
             .ok()
             .and_then(|result| result.decode::<geoip2::Asn>().ok())?
             .and_then(|asn_record| asn_record.autonomous_system_organization)
@@ -162,10 +150,8 @@ impl VScalar for GeoipAsnNumScalar {
 }
 
 impl GeoipAsnNumScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
-        //let as_str = ip_as_ref.data.as_ref()?;
-        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
-        db.lookup(as_ipaddr)
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
+        db.lookup(ip.parse().ok()?)
             .ok()
             .and_then(|result| result.decode::<geoip2::Asn>().ok())?
             .and_then(|asn_record| asn_record.autonomous_system_number)
@@ -203,11 +189,9 @@ impl VScalar for GeoipCityScalar {
 }
 
 impl GeoipCityScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
-        //let as_str = ip_as_ref.data.as_ref()?;
-        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
         match db
-            .lookup(as_ipaddr)
+            .lookup(ip.parse().ok()?)
             .ok()
             .and_then(|result| result.decode::<geoip2::City>().ok())?
         {
@@ -248,11 +232,9 @@ impl VScalar for GeoipCountryIsoScalar {
 }
 
 impl GeoipCountryIsoScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: &ffi::duckdb_string_t) -> Option<String> {
-        //let as_str = ip_as_ref.data.as_ref()?;
-        let as_ipaddr = duckdb_string_to_string(ip).parse().ok()?;
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
         match db
-            .lookup(as_ipaddr)
+            .lookup(ip.parse().ok()?)
             .ok()
             .and_then(|result| result.decode::<geoip2::City>().ok())?
         {

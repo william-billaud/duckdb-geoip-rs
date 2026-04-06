@@ -71,3 +71,15 @@ statement error
 SELECT geoip_country_iso(1);
 ----
 Binder Error: No function matches the given name and argument types 'geoip_country_iso(INTEGER_LITERAL)'. You might need to add explicit type casts.
+
+
+# Test documentation
+query TTTTTT
+SELECT database_name, function_name, parameter_types, return_type, description, examples  FROM duckdb_functions() WHERE function_name = 'geoip_asn_org';
+----
+system
+geoip_asn_org
+[VARCHAR]
+VARCHAR
+NULL
+[]

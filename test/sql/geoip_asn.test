@@ -47,10 +47,10 @@ GB
 query TTTT
 SELECT geoip_asn_org('not_an_ip'),geoip_asn_num('not_an_ip'), geoip_city('not_an_ip'),geoip_country_iso('not_an_ip');
 ----
-(empty)
-(empty)
-(empty)
-(empty)
+NULL
+NULL
+NULL
+NULL
 
 statement error
 SELECT geoip_asn_org(1);

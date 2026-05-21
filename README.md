@@ -1,6 +1,6 @@
 # DuckDB geoip extension
 
-This extension export 4 function using MaxminDB database:
+This extension export 4 function using MaxminDB database that can be used with DuckDB.
 * geoip_asn_org(ip : VARCHAR)-> VARCHAR
 * geoip_asn_num(ip : VARCHAR)-> VARCHAR
 * geoip_city(ip : VARCHAR)-> VARCHAR
@@ -42,13 +42,18 @@ SELECT ip, geoip_asn_org(ip),geoip_asn_num(ip),geoip_city(ip), geoip_country_iso
 │     ip     │ geoip_asn_org(ip) │ geoip_asn_num(ip) │ geoip_city(ip) │ geoip_country_iso(ip) │
 │  varchar   │      varchar      │      varchar      │    varchar     │        varchar        │
 ├────────────┼───────────────────┼───────────────────┼────────────────┼───────────────────────┤
-│ 1.1.1.1    │ CLOUDFLARENET     │ 13335             │                │                       │
-│ 8.8.8.8    │ GOOGLE            │ 15169             │                │ US                    │
-│ 80.8.8.8   │ Orange            │ 3215              │                │ RE                    │
+│ 1.1.1.1    │ Cloudflare, Inc.  │ 13335             │                │ AU                    │
+│ 8.8.8.8    │ Google LLC        │ 15169             │                │ US                    │
+│ 80.8.8.8   │ Orange            │ 3215              │ Le Tampon      │ RE                    │
 │ 90.9.250.1 │ Orange            │ 3215              │ Lyon           │ FR                    │
-│ not_anip   │                   │                   │                │                       │
+│ not_anip   │ NULL              │ NULL              │ NULL           │ NULL                  │
 └────────────┴───────────────────┴───────────────────┴────────────────┴───────────────────────┘
 ```
+
+## Project status
+
+The source code is open-source; external contributions are accepted but not actively pursued.
+I don’t plan to add any new features, but simply to keep this plugin up to date with new versions of DuckDB.
 
 ## Cloning
 

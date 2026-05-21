@@ -1,19 +1,22 @@
-use duckdb::core::FlatVector;
 use duckdb::{
-    core::{DataChunkHandle, Inserter, LogicalTypeId},
     duckdb_entrypoint_c_api,
-    types::DuckString,
-    vscalar::{ScalarFunctionSignature, VScalar},
-    vtab::arrow::WritableVector,
+    vscalar::{ArrowFunctionSignature, VArrowScalar},
     Connection, Result,
 };
-use libduckdb_sys as ffi;
+
+use arrow::{
+    array::{Array, StringArray},
+    datatypes::DataType,
+    record_batch::RecordBatch,
+};
 use maxminddb::geoip2;
 use maxminddb::Mmap;
 use once_cell::sync::OnceCell;
 use std::env;
 use std::error::Error;
+use std::net::IpAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 enum MMDBDatabaseType {
     City,
@@ -47,60 +50,44 @@ static MMDB_CITY_CELL: OnceCell<maxminddb::Reader<Mmap>> = OnceCell::new();
 
 fn invoke_wrapper(
     mmdb_type: MMDBDatabaseType,
-    input: &mut DataChunkHandle,
-    output: &mut dyn WritableVector,
-    geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String>,
-) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    input: RecordBatch,
+    geoip_func: fn(db: &maxminddb::Reader<Mmap>, ip: IpAddr) -> Option<String>,
+) -> Result<Arc<dyn Array>, Box<dyn Error>> {
     let reader = match mmdb_type {
         MMDBDatabaseType::City => MMDB_CITY_CELL.get_or_init(|| mmdb_type.get_db()),
         MMDBDatabaseType::Asn => MMDB_ASN_CELL.get_or_init(|| mmdb_type.get_db()),
     };
-    let mut input_vector = input.flat_vector(0);
-    let sliced_input_vector: &mut [ffi::duckdb_string_t] = input_vector.as_mut_slice();
-    let output_vector: FlatVector = output.flat_vector();
-
-    let count: usize = input.len();
-    for i in 0..count {
-        let input_str = sliced_input_vector.get_mut(i);
-        match { input_str } {
-            None => {
-                output_vector.insert(i, "");
-            }
-            Some(s) => {
-                let ip_addr: String = DuckString::new(s).as_str().to_string();
-                output_vector.insert(
-                    i,
-                    geoip_func(reader, ip_addr)
-                        .unwrap_or_else(|| "".to_string())
-                        .as_str(),
-                );
-            }
-        }
-    }
-    Ok(())
+    let input_vector = input
+        .column(0)
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    let results: Vec<Option<String>> = input_vector
+        .iter()
+        .map(|i| -> Result<Option<String>, Box<dyn Error>> {
+            Ok(i.and_then(|input_str| {
+                input_str
+                    .parse()
+                    .ok()
+                    .and_then(|as_ip| Some(geoip_func(reader, as_ip).unwrap_or("".to_string())))
+            }))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Arc::new(StringArray::from(results)))
 }
 
 pub struct GeoipAsnOrgScalar {}
-impl VScalar for GeoipAsnOrgScalar {
+impl VArrowScalar for GeoipAsnOrgScalar {
     type State = ();
 
-    unsafe fn invoke(
-        _state: &Self::State,
-        input: &mut DataChunkHandle,
-        output: &mut dyn WritableVector,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(
-            MMDBDatabaseType::Asn,
-            input,
-            output,
-            GeoipAsnOrgScalar::lookup_ip,
-        )
+    fn invoke(_: &Self::State, input: RecordBatch) -> Result<Arc<dyn Array>, Box<dyn Error>> {
+        invoke_wrapper(MMDBDatabaseType::Asn, input, GeoipAsnOrgScalar::lookup_ip)
     }
 
-    fn signatures() -> Vec<ScalarFunctionSignature> {
-        vec![ScalarFunctionSignature::exact(
-            vec![LogicalTypeId::Varchar.into()],
-            LogicalTypeId::Varchar.into(),
+    fn signatures() -> Vec<ArrowFunctionSignature> {
+        vec![ArrowFunctionSignature::exact(
+            vec![DataType::Utf8],
+            DataType::Utf8,
         )]
     }
 
@@ -110,9 +97,9 @@ impl VScalar for GeoipAsnOrgScalar {
 }
 
 impl GeoipAsnOrgScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: IpAddr) -> Option<String> {
         //let as_str = ip_as_ref.data.as_ref()?;
-        db.lookup(ip.parse().ok()?)
+        db.lookup(ip)
             .ok()
             .and_then(|result| result.decode::<geoip2::Asn>().ok())?
             .and_then(|asn_record| asn_record.autonomous_system_organization)
@@ -121,26 +108,17 @@ impl GeoipAsnOrgScalar {
 }
 
 pub struct GeoipAsnNumScalar {}
-impl VScalar for GeoipAsnNumScalar {
+impl VArrowScalar for GeoipAsnNumScalar {
     type State = ();
 
-    unsafe fn invoke(
-        _state: &Self::State,
-        input: &mut DataChunkHandle,
-        output: &mut dyn WritableVector,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(
-            MMDBDatabaseType::Asn,
-            input,
-            output,
-            GeoipAsnNumScalar::lookup_ip,
-        )
+    fn invoke(_: &Self::State, input: RecordBatch) -> Result<Arc<dyn Array>, Box<dyn Error>> {
+        invoke_wrapper(MMDBDatabaseType::Asn, input, GeoipAsnNumScalar::lookup_ip)
     }
 
-    fn signatures() -> Vec<ScalarFunctionSignature> {
-        vec![ScalarFunctionSignature::exact(
-            vec![LogicalTypeId::Varchar.into()],
-            LogicalTypeId::Varchar.into(),
+    fn signatures() -> Vec<ArrowFunctionSignature> {
+        vec![ArrowFunctionSignature::exact(
+            vec![DataType::Utf8],
+            DataType::Utf8,
         )]
     }
 
@@ -150,8 +128,8 @@ impl VScalar for GeoipAsnNumScalar {
 }
 
 impl GeoipAsnNumScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
-        db.lookup(ip.parse().ok()?)
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: IpAddr) -> Option<String> {
+        db.lookup(ip)
             .ok()
             .and_then(|result| result.decode::<geoip2::Asn>().ok())?
             .and_then(|asn_record| asn_record.autonomous_system_number)
@@ -160,26 +138,17 @@ impl GeoipAsnNumScalar {
 }
 
 pub struct GeoipCityScalar {}
-impl VScalar for GeoipCityScalar {
+impl VArrowScalar for GeoipCityScalar {
     type State = ();
 
-    unsafe fn invoke(
-        _state: &Self::State,
-        input: &mut DataChunkHandle,
-        output: &mut dyn WritableVector,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
-        invoke_wrapper(
-            MMDBDatabaseType::City,
-            input,
-            output,
-            GeoipCityScalar::lookup_ip,
-        )
+    fn invoke(_: &Self::State, input: RecordBatch) -> Result<Arc<dyn Array>, Box<dyn Error>> {
+        invoke_wrapper(MMDBDatabaseType::City, input, GeoipCityScalar::lookup_ip)
     }
 
-    fn signatures() -> Vec<ScalarFunctionSignature> {
-        vec![ScalarFunctionSignature::exact(
-            vec![LogicalTypeId::Varchar.into()],
-            LogicalTypeId::Varchar.into(),
+    fn signatures() -> Vec<ArrowFunctionSignature> {
+        vec![ArrowFunctionSignature::exact(
+            vec![DataType::Utf8],
+            DataType::Utf8,
         )]
     }
 
@@ -189,9 +158,9 @@ impl VScalar for GeoipCityScalar {
 }
 
 impl GeoipCityScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: IpAddr) -> Option<String> {
         match db
-            .lookup(ip.parse().ok()?)
+            .lookup(ip)
             .ok()
             .and_then(|result| result.decode::<geoip2::City>().ok())?
         {
@@ -203,26 +172,21 @@ impl GeoipCityScalar {
 }
 
 pub struct GeoipCountryIsoScalar {}
-impl VScalar for GeoipCountryIsoScalar {
+impl VArrowScalar for GeoipCountryIsoScalar {
     type State = ();
 
-    unsafe fn invoke(
-        _state: &Self::State,
-        input: &mut DataChunkHandle,
-        output: &mut dyn WritableVector,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    fn invoke(_: &Self::State, input: RecordBatch) -> Result<Arc<dyn Array>, Box<dyn Error>> {
         invoke_wrapper(
             MMDBDatabaseType::City,
             input,
-            output,
             GeoipCountryIsoScalar::lookup_ip,
         )
     }
 
-    fn signatures() -> Vec<ScalarFunctionSignature> {
-        vec![ScalarFunctionSignature::exact(
-            vec![LogicalTypeId::Varchar.into()],
-            LogicalTypeId::Varchar.into(),
+    fn signatures() -> Vec<ArrowFunctionSignature> {
+        vec![ArrowFunctionSignature::exact(
+            vec![DataType::Utf8],
+            DataType::Utf8,
         )]
     }
 
@@ -232,9 +196,9 @@ impl VScalar for GeoipCountryIsoScalar {
 }
 
 impl GeoipCountryIsoScalar {
-    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: String) -> Option<String> {
+    fn lookup_ip(db: &maxminddb::Reader<Mmap>, ip: IpAddr) -> Option<String> {
         match db
-            .lookup(ip.parse().ok()?)
+            .lookup(ip)
             .ok()
             .and_then(|result| result.decode::<geoip2::City>().ok())?
         {

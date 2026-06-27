@@ -20,7 +20,7 @@ path = "src/wasm_lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
-duckdb = { version = "=1.10503.0", features = ["vscalar", "loadable-extension", "vscalar-arrow"] }
+duckdb = { version = "=1.10504.0", features = ["vscalar", "loadable-extension", "vscalar-arrow"] }
 arrow = { version = "58", default-features = false }
 
 maxminddb = { version = "0.28.1", features = ["mmap"] }

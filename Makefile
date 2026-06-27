@@ -9,7 +9,7 @@ EXTENSION_NAME=duckdb_geoip_rs
 USE_UNSTABLE_C_API=1
 
 # Target DuckDB version
-TARGET_DUCKDB_VERSION=v1.5.3
+TARGET_DUCKDB_VERSION=v1.5.4
 export MAXMIND_MMDB_DIR = $(CURDIR)/test_db
 
 all: configure debug

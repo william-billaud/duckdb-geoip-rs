@@ -1,14 +1,11 @@
 use duckdb::{
+    arrow::array::{Array, RecordBatch, StringArray},
+    arrow::datatypes::DataType,
     duckdb_entrypoint_c_api,
     vscalar::{ArrowFunctionSignature, VArrowScalar},
     Connection, Result,
 };
 
-use arrow::{
-    array::{Array, StringArray},
-    datatypes::DataType,
-    record_batch::RecordBatch,
-};
 use maxminddb::geoip2;
 use maxminddb::Mmap;
 use once_cell::sync::OnceCell;

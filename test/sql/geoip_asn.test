@@ -81,5 +81,5 @@ system
 geoip_asn_org
 [VARCHAR]
 VARCHAR
-NULL
-[]
+ASN org lookup using `$MAXMIND_MMDB_DIR`/GeoLite2-ASN.mmdb database
+['geoip_asn_org(\'90.9.250.1\')']

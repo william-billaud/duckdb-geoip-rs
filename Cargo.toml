@@ -1,26 +1,17 @@
-[package]
-name = "duckdb_geoip_rs"
-version = "0.2.5"
-edition = "2021"
+[workspace]
+members = ["crates/core", "crates/native", "crates/wasm"]
+default-members = ["crates/native"]
+resolver = "3"
 
-[lib]
-crate-type = ["cdylib"]
+[workspace.package]
+version = "0.3.0"
+edition = "2024"
+
+[workspace.dependencies]
+duckdb-neo = { version = "0.20000.0", features = ["build-extension"] }
+duckdb-loadable-macros = { version = "1.20000.0", features = ["neo"] }
+duckdb_geoip_rs_core = { path = "crates/core" }
 
 [profile.release]
 lto = true
 strip = true
-
-[[example]]
-# crate-type can't be (at the moment) be overriden for specific targets
-# src/wasm_lib.rs forwards to src/lib.rs so that we can change from cdylib
-# (that is needed while compiling natively) to staticlib (needed since the
-# actual linking will be done via emcc
-name = "duckdb_geoip_rs"
-path = "src/wasm_lib.rs"
-crate-type = ["staticlib"]
-
-[dependencies]
-duckdb = { version = "=1.10506.0", features = ["vscalar", "loadable-extension", "vscalar-arrow"] }
-
-maxminddb = { version = "0.32.0", features = ["mmap"] }
-once_cell = "1.21.3"

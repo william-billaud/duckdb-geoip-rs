@@ -1,0 +1,13 @@
+[package]
+name = "duckdb_geoip_rs_wasm"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "duckdb_geoip_rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+duckdb-neo.workspace = true
+duckdb-loadable-macros.workspace = true
+duckdb_geoip_rs_core.workspace = true

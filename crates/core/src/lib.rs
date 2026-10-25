@@ -1,14 +1,13 @@
 use duckdb_neo::{
-    DuckDBType, Result,
+    DuckDBType,
+    error::DuckDBError,
     extension::Extension,
     scalar::{ScalarCallbacks, ScalarFunctionBuilder, ScalarInitCallbacks},
     signature::{FunctionDocumentationBuilder, FunctionParameter, SignatureBuilder},
-    error::{DuckDBError, Error}
 };
 
 use maxminddb;
-use maxminddb::{geoip2, Reader};
-use once_cell::sync::OnceCell;
+use maxminddb::geoip2;
 use std::env;
 use std::net::IpAddr;
 use std::path::Path;
@@ -25,42 +24,56 @@ impl MMDBDatabaseType {
             MMDBDatabaseType::Asn => "GeoLite2-ASN.mmdb",
         }
     }
-    fn get_db(&self) -> maxminddb::Reader<Vec<u8>> {
+    fn get_db(&self) -> Result<maxminddb::Reader<Vec<u8>>, duckdb_neo::error::Error> {
         let dbpath_s =
             env::var("MAXMIND_MMDB_DIR").unwrap_or_else(|_| "/usr/share/GeoIP".to_string());
-        let dbpath = Path::new(&dbpath_s);
-        let reader = maxminddb::Reader::open_readfile(dbpath.join(self.db_name())).expect(
-            format!(
-                "Could not load mmdb file, trying to read {}. Use MAXMIND_MMDB_DIR",
-                dbpath.join(self.db_name()).display()
-            )
-            .as_str(),
-        );
-        reader
+        let dbpath = Path::new(&dbpath_s).join(self.db_name());
+        match maxminddb::Reader::open_readfile(&dbpath) {
+            Ok(db) => Ok(db),
+            Err(err) => Err(duckdb_neo::Error {
+                code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
+                message: format!("initialize mmdb file failed. {} : {}", dbpath.display(), err).to_string(),
+            }),
+        }
     }
 }
-static MMDB_CITY_CELL: OnceCell<maxminddb::Reader<Vec<u8>>> = OnceCell::new();
-
 pub struct GeoipCityScalar {}
 
+impl ScalarInitCallbacks for GeoipCityScalar {
+    fn init(
+        &self,
+        _bind_data: Option<&Self::BindData>,
+        _context: &duckdb_neo::connection::Context,
+    ) -> duckdb_neo::Result<Self::InitData> {
+        MMDBDatabaseType::City.get_db()
+    }
+}
 impl ScalarCallbacks for GeoipCityScalar {
     type BindData = ();
-    type InitData = ();
+    type InitData = maxminddb::Reader<Vec<u8>>;
     fn exec(
         &self,
         _bind_data: Option<&Self::BindData>,
-        _init_data: Option<&mut Self::InitData>,
+        init_data: Option<&mut Self::InitData>,
         _context: &duckdb_neo::connection::Context,
         vectors: &mut duckdb_neo::data_chunk::VectorCollection,
         output: duckdb_neo::vector::Vector<'_, duckdb_neo::vector::Unknown>,
-    ) -> Result<()> {
+    ) -> duckdb_neo::Result<()> {
         let mut output = output.cast::<String>()?;
         output.set_size(vectors.row_count()?)?;
 
         let vector = vectors.get_vector_at::<String>(0)?;
         let reader = vector.reader()?;
         let mut writer = output.writer()?;
-        let mmdb_reader = MMDB_CITY_CELL.get_or_init(|| MMDBDatabaseType::City.get_db());
+        let mmdb_reader = match init_data {
+            Some(mmdb_reader) => mmdb_reader,
+            None => {
+                return Err(duckdb_neo::Error {
+                    code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
+                    message: "initialize mmdb file failed".to_string(),
+                });
+            }
+        };
 
         for (i, row) in reader.iter().enumerate() {
             match row {
@@ -98,14 +111,14 @@ impl ScalarInitCallbacks for GeoipAsnOrgScalar {
         &self,
         _bind_data: Option<&Self::BindData>,
         _context: &duckdb_neo::connection::Context,
-    ) -> Result<Self::InitData> {
-        Ok(MMDBDatabaseType::Asn.get_db())
+    ) -> duckdb_neo::Result<Self::InitData> {
+        MMDBDatabaseType::Asn.get_db()
     }
 }
 
 impl ScalarCallbacks for GeoipAsnOrgScalar {
     type BindData = ();
-    type InitData = Reader<Vec<u8>>;
+    type InitData = maxminddb::Reader<Vec<u8>>;
     fn exec(
         &self,
         _bind_data: Option<&Self::BindData>,
@@ -113,7 +126,7 @@ impl ScalarCallbacks for GeoipAsnOrgScalar {
         _context: &duckdb_neo::connection::Context,
         vectors: &mut duckdb_neo::data_chunk::VectorCollection,
         output: duckdb_neo::vector::Vector<'_, duckdb_neo::vector::Unknown>,
-    ) -> Result<()> {
+    ) -> duckdb_neo::Result<()> {
         let mut output = output.cast::<String>()?;
         output.set_size(vectors.row_count()?)?;
 
@@ -123,7 +136,7 @@ impl ScalarCallbacks for GeoipAsnOrgScalar {
         let mmdb_reader = match init_data {
             Some(mmdb_reader) => mmdb_reader,
             None => {
-                return Err(Error {
+                return Err(duckdb_neo::Error {
                     code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
                     message: "initialize mmdb file failed".to_string(),
                 });
@@ -162,8 +175,8 @@ impl ScalarInitCallbacks for GeoipAsnNumScalar {
         &self,
         _bind_data: Option<&Self::BindData>,
         _context: &duckdb_neo::connection::Context,
-    ) -> Result<Self::InitData> {
-        Ok(MMDBDatabaseType::Asn.get_db())
+    ) -> duckdb_neo::Result<Self::InitData> {
+        MMDBDatabaseType::Asn.get_db()
     }
 }
 
@@ -177,7 +190,7 @@ impl ScalarCallbacks for GeoipAsnNumScalar {
         _context: &duckdb_neo::connection::Context,
         vectors: &mut duckdb_neo::data_chunk::VectorCollection,
         output: duckdb_neo::vector::Vector<'_, duckdb_neo::vector::Unknown>,
-    ) -> Result<()> {
+    ) -> duckdb_neo::Result<()> {
         let mut output = output.cast::<u32>()?;
         output.set_size(vectors.row_count()?)?;
 
@@ -187,7 +200,7 @@ impl ScalarCallbacks for GeoipAsnNumScalar {
         let mmdb_reader = match init_data {
             Some(mmdb_reader) => mmdb_reader,
             None => {
-                return Err(Error {
+                return Err(duckdb_neo::Error {
                     code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
                     message: "initialize mmdb file failed".to_string(),
                 });
@@ -222,24 +235,42 @@ impl GeoipAsnNumScalar {
 
 pub struct GeoipCountryIsoScalar {}
 
+impl ScalarInitCallbacks for GeoipCountryIsoScalar {
+    fn init(
+        &self,
+        _bind_data: Option<&Self::BindData>,
+        _context: &duckdb_neo::connection::Context,
+    ) -> duckdb_neo::Result<Self::InitData> {
+        MMDBDatabaseType::City.get_db()
+    }
+}
+
 impl ScalarCallbacks for GeoipCountryIsoScalar {
     type BindData = ();
-    type InitData = ();
+    type InitData = maxminddb::Reader<Vec<u8>>;
     fn exec(
         &self,
         _bind_data: Option<&Self::BindData>,
-        _init_data: Option<&mut Self::InitData>,
+        init_data: Option<&mut Self::InitData>,
         _context: &duckdb_neo::connection::Context,
         vectors: &mut duckdb_neo::data_chunk::VectorCollection,
         output: duckdb_neo::vector::Vector<'_, duckdb_neo::vector::Unknown>,
-    ) -> Result<()> {
+    ) -> duckdb_neo::Result<()> {
         let mut output = output.cast::<String>()?;
         output.set_size(vectors.row_count()?)?;
 
         let vector = vectors.get_vector_at::<String>(0)?;
         let reader = vector.reader()?;
         let mut writer = output.writer()?;
-        let mmdb_reader = MMDB_CITY_CELL.get_or_init(|| MMDBDatabaseType::City.get_db());
+        let mmdb_reader = match init_data {
+            Some(mmdb_reader) => mmdb_reader,
+            None => {
+                return Err(duckdb_neo::Error {
+                    code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
+                    message: "initialize mmdb file failed".to_string(),
+                });
+            }
+        };
 
         for (i, row) in reader.iter().enumerate() {
             match row {
@@ -271,7 +302,7 @@ impl GeoipCountryIsoScalar {
     }
 }
 
-pub fn register(extension: &Extension) -> Result<()> {
+pub fn register(extension: &Extension) -> duckdb_neo::Result<()> {
     ScalarFunctionBuilder::new(
         "geoip_country_iso",
         SignatureBuilder::new()
@@ -285,6 +316,7 @@ pub fn register(extension: &Extension) -> Result<()> {
             ),
         GeoipCountryIsoScalar {},
     )
+    .with_init()
     .register(extension)?;
 
     ScalarFunctionBuilder::new(
@@ -302,6 +334,7 @@ pub fn register(extension: &Extension) -> Result<()> {
             ),
         GeoipCityScalar {},
     )
+    .with_init()
     .register(extension)?;
 
     ScalarFunctionBuilder::new(

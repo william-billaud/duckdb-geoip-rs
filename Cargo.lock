@@ -124,7 +124,6 @@ version = "0.3.0"
 dependencies = [
  "duckdb-neo",
  "maxminddb",
- "once_cell",
 ]
 
 [[package]]

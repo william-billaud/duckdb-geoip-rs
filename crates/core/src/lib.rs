@@ -82,23 +82,20 @@ impl GeoipOutput for u32 {
 
 trait GeoipLookup {
     type Output: GeoipOutput;
-    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: &str) -> Option<Self::Output>;
+    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: IpAddr) -> Option<Self::Output>;
     fn database_type() -> MMDBDatabaseType;
 }
 
 impl GeoipLookup for CountryIsoLookup {
     type Output = String;
-    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: &str) -> Option<String> {
-        match ip_as_str.parse::<IpAddr>() {
-            Ok(ip) => db.lookup(ip).ok().and_then(move |result| {
-                result
-                    .decode_path(&maxminddb::path!["country", "iso_code"])
-                    .unwrap_or(Some(""))
-                    .or(Some(""))
-                    .and_then(|name| Some(name.to_string()))
-            }),
-            Err(_) => None,
-        }
+    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<String> {
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["country", "iso_code"])
+                .unwrap_or(None)
+                .or(Some(""))
+                .and_then(|name| Some(name.to_string()))
+        })
     }
 
     fn database_type() -> MMDBDatabaseType {
@@ -107,17 +104,14 @@ impl GeoipLookup for CountryIsoLookup {
 }
 impl GeoipLookup for CityLookup {
     type Output = String;
-    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: &str) -> Option<String> {
-        match ip_as_str.parse::<IpAddr>() {
-            Ok(ip) => db.lookup(ip).ok().and_then(move |result| {
-                result
-                    .decode_path(&maxminddb::path!["city", "names", "en"])
-                    .unwrap_or(Some(""))
-                    .or(Some(""))
-                    .and_then(|name| Some(name.to_string()))
-            }),
-            Err(_) => None,
-        }
+    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<String> {
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["city", "names", "en"])
+                .unwrap_or(None)
+                .or(Some(""))
+                .and_then(|name| Some(name.to_string()))
+        })
     }
 
     fn database_type() -> MMDBDatabaseType {
@@ -127,17 +121,14 @@ impl GeoipLookup for CityLookup {
 
 impl GeoipLookup for ASNOrgLookup {
     type Output = String;
-    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: &str) -> Option<String> {
-        match ip_as_str.parse::<IpAddr>() {
-            Ok(ip) => db.lookup(ip).ok().and_then(move |result| {
-                result
-                    .decode_path(&maxminddb::path!["autonomous_system_organization"])
-                    .unwrap_or(Some(""))
-                    .or(Some(""))
-                    .and_then(|name| Some(name.to_string()))
-            }),
-            Err(_) => None,
-        }
+    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<String> {
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["autonomous_system_organization"])
+                .unwrap_or(None)
+                .or(Some(""))
+                .and_then(|name| Some(name.to_string()))
+        })
     }
 
     fn database_type() -> MMDBDatabaseType {
@@ -147,15 +138,12 @@ impl GeoipLookup for ASNOrgLookup {
 
 impl GeoipLookup for ASNLookup {
     type Output = u32;
-    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip_as_str: &str) -> Option<u32> {
-        match ip_as_str.parse::<IpAddr>() {
-            Ok(ip) => db.lookup(ip).ok().and_then(|result| {
-                result
-                    .decode_path(&maxminddb::path!["autonomous_system_number"])
-                    .unwrap_or(None)
-            }),
-            Err(_) => None,
-        }
+    fn lookup_ip(db: &mut maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<u32> {
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["autonomous_system_number"])
+                .unwrap_or(None)
+        })
     }
 
     fn database_type() -> MMDBDatabaseType {
@@ -211,10 +199,13 @@ impl<L: GeoipLookup + 'static> ScalarCallbacks for GeoipScalar<L> {
         };
 
         for (i, row) in reader.iter().enumerate() {
-            match row {
-                Some(row) => L::Output::write_value(&mut writer, i, L::lookup_ip(mmdb_reader, row)),
-                None => writer.set(i, None),
-            }?
+            L::Output::write_value(
+                &mut writer,
+                i,
+                row.and_then(|ip_as_str| ip_as_str.parse::<IpAddr>().ok())
+                    .and_then(|ip| L::lookup_ip(mmdb_reader, ip)),
+            )
+            .expect("TODO: panic message");
         }
         Ok(())
     }

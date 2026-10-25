@@ -85,7 +85,7 @@ impl ScalarCallbacks for GeoipCityScalar {
                 Some(row) => writer.set(
                     i,
                     match { row.parse::<IpAddr>() } {
-                        Ok(ip) => Self::lookup_ip(mmdb_reader, ip).or(Some("")),
+                        Ok(ip) => Self::lookup_ip(mmdb_reader, ip),
                         Err(_) => None,
                     },
                 ),
@@ -104,7 +104,7 @@ impl GeoipCityScalar {
             .and_then(|result| result.decode::<geoip2::City>().ok())?
         {
             // only support english, maybe allows to pass language as param
-            Some(city) => Some(city.city.names.english?),
+            Some(city) => Some(city.city.names.english.unwrap_or("")),
             None => None,
         }
     }
@@ -165,11 +165,11 @@ impl ScalarCallbacks for GeoipAsnOrgScalar {
 
 impl GeoipAsnOrgScalar {
     fn lookup_ip(db: &maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<&str> {
-        db.lookup(ip)
-            .ok()
-            .and_then(|result| result.decode::<geoip2::Asn>().ok())?
-            .and_then(|asn_record| asn_record.autonomous_system_organization)
-            .and_then(|organization| Some(organization))
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["autonomous_system_organization"])
+                .unwrap_or(None)
+        })
     }
 }
 
@@ -230,11 +230,11 @@ impl ScalarCallbacks for GeoipAsnNumScalar {
 
 impl GeoipAsnNumScalar {
     fn lookup_ip(db: &maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<u32> {
-        db.lookup(ip)
-            .ok()
-            .and_then(|result| result.decode::<geoip2::Asn>().ok())?
-            .and_then(|asn_record| asn_record.autonomous_system_number)
-            .and_then(|number| Some(number))
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["autonomous_system_number"])
+                .unwrap_or(None)
+        })
     }
 }
 

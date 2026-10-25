@@ -1,0 +1,8 @@
+[package]
+name = "duckdb_geoip_rs_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+duckdb-neo.workspace = true
+maxminddb = { version = "0.32.0"}

@@ -1,6 +1,6 @@
-# name: test/sql/rusty_quack.test
-# description: test rusty_quack extension
-# group: [geoip-rs]
+# name: test/sql/geoip_asn.test
+# description: test geoip_asn extension
+# group: [duckdb-geoip-rs]
 
 # Before we load the extension, this will fail
 statement error
@@ -81,5 +81,5 @@ system
 geoip_asn_org
 [VARCHAR]
 VARCHAR
-NULL
-[]
+IP ASN org lookup using `$MAXMIND_MMDB_DIR`/GeoLite2-ASN.mmdb database
+['geoip_asn_org(\'90.9.250.1\')']

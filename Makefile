@@ -4,12 +4,13 @@ PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
 EXTENSION_NAME=duckdb_geoip_rs
 
-# Set to 1 to enable Unstable API (binaries will only work on TARGET_DUCKDB_VERSION, forwards compatibility will be broken)
-# Note: currently extension-template-rs requires this, as duckdb-rs relies on unstable C API functionality
+# Mark the extension as C_STRUCT_UNSTABLE: DuckDB 2.x requires the _init_c_api_v2 entrypoint.
+# Binaries load only in the exact TARGET_DUCKDB_VERSION, not in newer DuckDB releases.
 USE_UNSTABLE_C_API=1
+CAPI_VERSION=2
 
 # Target DuckDB version
-TARGET_DUCKDB_VERSION=v1.5.6
+TARGET_DUCKDB_VERSION=v2.0.0
 export MAXMIND_MMDB_DIR = $(CURDIR)/test_db
 
 all: configure debug
@@ -17,6 +18,14 @@ all: configure debug
 # Include makefiles from DuckDB
 include extension-ci-tools/makefiles/c_api_extensions/base.Makefile
 include extension-ci-tools/makefiles/c_api_extensions/rust.Makefile
+
+# Build workspace libraries rather than the CI tools' Wasm example target.
+IS_EXAMPLE=
+ifneq ($(DUCKDB_WASM_PLATFORM),)
+	TARGET_INFO=--target $(TARGET) --package duckdb_geoip_rs_wasm
+else
+	TARGET_INFO+=--package duckdb_geoip_rs
+endif
 
 configure: venv platform extension_version
 

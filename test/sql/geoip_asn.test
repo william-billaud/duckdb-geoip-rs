@@ -1,6 +1,6 @@
-# name: test/sql/rusty_quack.test
-# description: test rusty_quack extension
-# group: [geoip-rs]
+# name: test/sql/geoip_asn.test
+# description: test geoip_asn extension
+# group: [duckdb-geoip-rs]
 
 # Before we load the extension, this will fail
 statement error

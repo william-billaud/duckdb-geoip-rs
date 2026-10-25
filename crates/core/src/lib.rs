@@ -7,7 +7,6 @@ use duckdb_neo::{
 };
 
 use maxminddb;
-use maxminddb::geoip2;
 use std::env;
 use std::net::IpAddr;
 use std::path::Path;
@@ -98,15 +97,11 @@ impl ScalarCallbacks for GeoipCityScalar {
 
 impl GeoipCityScalar {
     fn lookup_ip(db: &maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<&str> {
-        match db
-            .lookup(ip)
-            .ok()
-            .and_then(|result| result.decode::<geoip2::City>().ok())?
-        {
-            // only support english, maybe allows to pass language as param
-            Some(city) => Some(city.city.names.english.unwrap_or("")),
-            None => None,
-        }
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["city", "names", "en"])
+                .unwrap_or(Some("")).or(Some(""))
+        })
     }
 }
 pub struct GeoipAsnOrgScalar {}
@@ -295,15 +290,11 @@ impl ScalarCallbacks for GeoipCountryIsoScalar {
 
 impl GeoipCountryIsoScalar {
     fn lookup_ip(db: &maxminddb::Reader<Vec<u8>>, ip: IpAddr) -> Option<&str> {
-        match db
-            .lookup(ip)
-            .ok()
-            .and_then(|result| result.decode::<geoip2::City>().ok())?
-        {
-            // only support english, maybe allows to pass language as param
-            Some(city) => Some(city.country.iso_code?),
-            None => None,
-        }
+        db.lookup(ip).ok().and_then(|result| {
+            result
+                .decode_path(&maxminddb::path!["country", "iso_code"])
+                .unwrap_or(None)
+        })
     }
 }
 

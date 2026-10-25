@@ -32,7 +32,12 @@ impl MMDBDatabaseType {
             Ok(db) => Ok(db),
             Err(err) => Err(duckdb_neo::Error {
                 code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
-                message: format!("initialize mmdb file failed. {} : {}", dbpath.display(), err).to_string(),
+                message: format!(
+                    "initialize mmdb file failed. {} : {}",
+                    dbpath.display(),
+                    err
+                )
+                .to_string(),
             }),
         }
     }

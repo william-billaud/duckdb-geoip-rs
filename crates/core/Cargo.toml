@@ -5,5 +5,5 @@ edition.workspace = true
 
 [dependencies]
 duckdb-neo.workspace = true
-maxminddb = { version = "0.32.0", features = ["mmap"] }
+maxminddb = { version = "0.32.0"}
 once_cell = "1.21.3"

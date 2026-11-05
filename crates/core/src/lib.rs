@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 use duckdb_neo::{
     DuckDBType,
     error::DuckDBError,
@@ -7,7 +9,6 @@ use duckdb_neo::{
 };
 
 use duckdb_neo::vector::WritableVectorElement;
-use maxminddb;
 use std::env;
 use std::marker::PhantomData;
 use std::net::IpAddr;
@@ -94,7 +95,7 @@ impl GeoipLookup for CountryIsoLookup {
                 .decode_path(&maxminddb::path!["country", "iso_code"])
                 .unwrap_or(None)
                 .or(Some(""))
-                .and_then(|name| Some(name.to_string()))
+                .map(|name| name.to_string())
         })
     }
 
@@ -110,7 +111,7 @@ impl GeoipLookup for CityLookup {
                 .decode_path(&maxminddb::path!["city", "names", "en"])
                 .unwrap_or(None)
                 .or(Some(""))
-                .and_then(|name| Some(name.to_string()))
+                .map(|name| name.to_string())
         })
     }
 
@@ -127,7 +128,7 @@ impl GeoipLookup for ASNOrgLookup {
                 .decode_path(&maxminddb::path!["autonomous_system_organization"])
                 .unwrap_or(None)
                 .or(Some(""))
-                .and_then(|name| Some(name.to_string()))
+                .map(|name| name.to_string())
         })
     }
 
@@ -187,7 +188,8 @@ impl<L: GeoipLookup + 'static> ScalarCallbacks for GeoipScalar<L> {
 
         let vector = vectors.get_vector_at::<String>(0)?;
         let reader = vector.reader()?;
-        let mut writer = output.writer()?;
+        let mut writer: duckdb_neo::vector::VectorWriter<'_, '_, <L as GeoipLookup>::Output> =
+            output.writer()?;
         let mmdb_reader = match init_data {
             Some(mmdb_reader) => mmdb_reader,
             None => {
@@ -204,8 +206,7 @@ impl<L: GeoipLookup + 'static> ScalarCallbacks for GeoipScalar<L> {
                 i,
                 row.and_then(|ip_as_str| ip_as_str.parse::<IpAddr>().ok())
                     .and_then(|ip| L::lookup_ip(mmdb_reader, ip)),
-            )
-            .expect("TODO: panic message");
+            )?;
         }
         Ok(())
     }

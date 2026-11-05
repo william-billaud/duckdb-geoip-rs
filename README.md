@@ -1,6 +1,7 @@
 # DuckDB geoip extension
 
 This extension export 4 function using MaxminDB database that can be used with DuckDB.
+
 * geoip_asn_org(ip : VARCHAR)-> VARCHAR
 * geoip_asn_num(ip : VARCHAR)-> VARCHAR
 * geoip_city(ip : VARCHAR)-> VARCHAR
@@ -24,7 +25,7 @@ load '/path/to/extension/duckdb_geoip_rs.duckdb_extension';
 Or install extension from community
 
 ```bash
-ducdkdb
+duckdb
 INSTALL 'duckdb_geoip_rs' FROM community;
 LOAD 'duckdb_geoip_rs';
 ```

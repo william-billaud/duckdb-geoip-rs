@@ -6,7 +6,7 @@ use duckdb_neo::{
     signature::{FunctionDocumentationBuilder, FunctionParameter, SignatureBuilder},
 };
 
-use duckdb_neo::vector::WritableVectorElement;
+use duckdb_neo::vector::{WritableNativeElement};
 use maxminddb;
 use std::env;
 use std::marker::PhantomData;
@@ -32,7 +32,7 @@ impl MMDBDatabaseType {
         match maxminddb::Reader::open_readfile(&dbpath) {
             Ok(db) => Ok(db),
             Err(err) => Err(duckdb_neo::Error {
-                code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
+                code: DuckDBError::InputInvalid,
                 message: format!(
                     "initialize mmdb file failed. {} : {}",
                     dbpath.display(),
@@ -50,9 +50,9 @@ struct CityLookup;
 struct ASNOrgLookup;
 struct ASNLookup;
 
-trait GeoipOutput: WritableVectorElement {
+trait GeoipOutput: WritableNativeElement {
     fn write_value(
-        writer: &mut duckdb_neo::vector::VectorWriter<'_, '_, Self>,
+        writer: &mut duckdb_neo::vector::VectorWriter< '_, Self>,
         index: usize,
         value: Option<Self>,
     ) -> duckdb_neo::Result<()>;
@@ -60,23 +60,23 @@ trait GeoipOutput: WritableVectorElement {
 
 impl GeoipOutput for String {
     fn write_value(
-        writer: &mut duckdb_neo::vector::VectorWriter<'_, '_, Self>,
+        writer: &mut duckdb_neo::vector::VectorWriter< '_, Self>,
         index: usize,
         value: Option<Self>,
     ) -> duckdb_neo::Result<()> {
         match value {
-            Some(value) => writer.set(index, Some(value.as_str())),
-            None => writer.set(index, None),
+            Some(value) => writer.set(index, value.as_str()),
+            None => writer.set_null(index),
         }
     }
 }
 impl GeoipOutput for u32 {
     fn write_value(
-        writer: &mut duckdb_neo::vector::VectorWriter<'_, '_, Self>,
+        writer: &mut duckdb_neo::vector::VectorWriter< '_, Self>,
         index: usize,
         value: Option<Self>,
     ) -> duckdb_neo::Result<()> {
-        writer.set(index, value)
+        writer.set_option(index, value.as_ref())
     }
 }
 
@@ -165,8 +165,8 @@ impl<L: GeoipLookup + 'static> GeoipScalar<L> {
 impl<L: GeoipLookup + 'static> ScalarInitCallbacks for GeoipScalar<L> {
     fn init(
         &self,
-        _bind_data: Option<&Self::BindData>,
         _context: &duckdb_neo::connection::Context,
+        _bind_data: Option<&Self::BindData>,
     ) -> duckdb_neo::Result<Self::InitData> {
         L::database_type().get_db()
     }
@@ -176,9 +176,9 @@ impl<L: GeoipLookup + 'static> ScalarCallbacks for GeoipScalar<L> {
     type InitData = maxminddb::Reader<Vec<u8>>;
     fn exec(
         &self,
+        _context: &duckdb_neo::connection::Context,
         _bind_data: Option<&Self::BindData>,
         init_data: Option<&mut Self::InitData>,
-        _context: &duckdb_neo::connection::Context,
         vectors: &mut duckdb_neo::data_chunk::VectorCollection,
         output: duckdb_neo::vector::Vector<'_, duckdb_neo::vector::Unknown>,
     ) -> duckdb_neo::Result<()> {
@@ -192,7 +192,7 @@ impl<L: GeoipLookup + 'static> ScalarCallbacks for GeoipScalar<L> {
             Some(mmdb_reader) => mmdb_reader,
             None => {
                 return Err(duckdb_neo::Error {
-                    code: DuckDBError::DUCKDB_V2_ERROR_INPUT_INVALID,
+                    code: DuckDBError::InputInvalid,
                     message: "initialize mmdb file failed".to_string(),
                 });
             }

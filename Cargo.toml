@@ -8,8 +8,8 @@ version = "0.3.0"
 edition = "2024"
 
 [workspace.dependencies]
-duckdb-neo = { version = "0.20000.0", features = ["build-extension"] }
-duckdb-loadable-macros = { version = "1.20000.0", features = ["neo"] }
+duckdb-neo = { version = "0.20001.0", features = ["build-extension"] }
+duckdb-loadable-macros = { version = "1.20001.0", features = ["neo"] }
 duckdb_geoip_rs_core = { path = "crates/core" }
 
 [profile.release]

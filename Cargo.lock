@@ -111,7 +111,7 @@ dependencies = [
 
 [[package]]
 name = "duckdb_geoip_rs"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "duckdb-loadable-macros",
  "duckdb-neo",
@@ -120,7 +120,7 @@ dependencies = [
 
 [[package]]
 name = "duckdb_geoip_rs_core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "duckdb-neo",
  "maxminddb",
@@ -128,7 +128,7 @@ dependencies = [
 
 [[package]]
 name = "duckdb_geoip_rs_wasm"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "duckdb-loadable-macros",
  "duckdb-neo",
@@ -260,9 +260,9 @@ checksum = "5d15f86d12da44cd8d4ec3c73984537eb7f4cadcb9776a575a0a8a05ca11005c"
 
 [[package]]
 name = "maxminddb"
-version = "0.32.0"
+version = "0.33.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b43d2458d977b610b04a3858e6504f06133663d303a1a0606601b530bfc9bc6"
+checksum = "317d6b918ba3893345af072f52cb56bcfcb532a9d0ebcf861ab3c25b37a316ac"
 dependencies = [
  "ipnetwork",
  "memchr",

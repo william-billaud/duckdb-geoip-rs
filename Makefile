@@ -10,7 +10,7 @@ USE_UNSTABLE_C_API=1
 CAPI_VERSION=2
 
 # Target DuckDB version
-TARGET_DUCKDB_VERSION=v2.0.0
+TARGET_DUCKDB_VERSION=v2.0.1
 export MAXMIND_MMDB_DIR = $(CURDIR)/test_db
 
 all: configure debug
@@ -29,12 +29,12 @@ endif
 
 configure: venv platform extension_version
 
-debug: build_extension_library_debug build_extension_with_metadata_debug
-release: build_extension_library_release build_extension_with_metadata_release
+debug: configure build_extension_library_debug build_extension_with_metadata_debug
+release: configure build_extension_library_release build_extension_with_metadata_release
 
 test: test_debug
 test_debug: test_extension_debug
-test_release: test_extension_release
+test_release: release test_extension_release
 
 clean: clean_build clean_rust
 clean_all: clean_configure clean

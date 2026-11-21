@@ -128,7 +128,7 @@ to ensure the previous `make configure` step is deleted.
 
 Then, run
 ```
-DUCKDB_TEST_VERSION=v1.3.2 make configure
+DUCKDB_TEST_VERSION=v2.0.0 make configure
 ```
 to select a different duckdb version to test with
 

@@ -4,12 +4,12 @@ default-members = ["crates/native"]
 resolver = "3"
 
 [workspace.package]
-version = "0.3.0"
+version = "0.3.1"
 edition = "2024"
 
 [workspace.dependencies]
-duckdb-neo = { version = "0.20000.0", features = ["build-extension"] }
-duckdb-loadable-macros = { version = "1.20000.0", features = ["neo"] }
+duckdb-neo = { version = "0.20001.0", features = ["build-extension"] }
+duckdb-loadable-macros = { version = "1.20001.0", features = ["neo"] }
 duckdb_geoip_rs_core = { path = "crates/core" }
 
 [profile.release]
